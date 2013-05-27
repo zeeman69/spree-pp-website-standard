@@ -1,6 +1,6 @@
 Spree::Order.class_eval do
   has_many :payment_notifications
-  
+
   # SSL certificates for encrypting paypal link
   PAYPAL_CERT_PEM = "#{Rails.root}/certs/paypal_cert_#{Rails.env}.pem"
   APP_CERT_PEM = "#{Rails.root}/certs/app_cert_#{Rails.env}.pem"
@@ -8,27 +8,15 @@ Spree::Order.class_eval do
   def shipment_cost
     adjustment_total - credit_total
   end
-  
+
   def payable_via_paypal?
     !!self.class.paypal_payment_method
   end
-  
+
   def self.paypal_payment_method
     PaymentMethod.select{ |pm| pm.name.downcase =~ /paypal/}.first
   end
-  
-  # commented-out, will be removed
-  # decide on configuration/preference side whether you want encrypted payments
-  #def self.use_encrypted_paypal_link?
-    #Spree::PaypalWebsiteStandard::Config.encrypted &&
-    #Spree::PaypalWebsiteStandard::Config.ipn_secret &&
-    #Spree::PaypalWebsiteStandard::Config.cert_id &&
-    #File.exist?(PAYPAL_CERT_PEM) &&
-    #File.exist?(APP_CERT_PEM) &&
-    #File.exist?(APP_KEY_PEM)
-  #end
-  
-  #def paypal_encrypted(payment_notifications_url, options = {})
+
   def paypal_encrypted(paypal_configuration, payment_notifications_url, options = {})
     values = {
       :business => paypal_configuration.preferred_account_email,
@@ -42,9 +30,10 @@ Spree::Order.class_eval do
       :charset => "utf-8",
       :cert_id => paypal_configuration.preferred_certificate_id,
       :page_style => 'PayPal',
-      :tax_cart => self.tax_total
+      :tax_cart => self.tax_total,
+      :discount_amount_cart => self.adjustments.eligible.inject(0) { |sum, a| sum - a.amount }.to_f
     }
-    
+
     self.line_items.each_with_index do |item, index|
       values.merge!({
         "amount_#{index + 1}" => item.price,
@@ -53,10 +42,10 @@ Spree::Order.class_eval do
         "quantity_#{index + 1}" => item.quantity
       })
     end
-    
+
     encrypt_for_paypal(values)
   end
-  
+
   def encrypt_for_paypal(values)
     paypal_cert = File.read(PAYPAL_CERT_PEM)
     app_cert = File.read(APP_CERT_PEM)
